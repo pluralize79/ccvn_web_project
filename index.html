@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko-KR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CCVN Editor</title>
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+    <main class="app">
+        <header class="app-header">
+            <div>
+                <h1>CCVN Editor</h1>
+                <p>HTML 대사를 불러와 시간순으로 정리합니다.</p>
+            </div>
+        </header>
+
+        <section class="import-panel">
+            <h2>HTML 파일 불러오기</h2>
+            <p>여러 HTML 파일을 한 번에 선택할 수 있습니다.</p>
+
+            <label class="file-button" for="htmlFiles">
+                HTML 파일 선택
+            </label>
+
+            <input
+                type="file"
+                id="htmlFiles"
+                accept=".html,.htm,text/html"
+                multiple
+            >
+
+            <div id="fileInfo" class="file-info">
+                아직 불러온 파일이 없습니다.
+            </div>
+        </section>
+
+        <section class="dialogue-panel">
+            <div class="dialogue-header">
+                <span id="dialogueCount">0개</span>
+            </div>
+
+            <div id="statusMessage" class="status-message" role="status">
+                HTML 파일을 선택해 주세요.
+            </div>
+
+            <div id="editorTopBar">
+                <button id="copyHtmlButton" type="button">
+                    코드 복사하기
+                </button>
+                <div><span>    </span></div>
+                <button id="saveHtmlButton" type="button">
+                    코드 저장하기
+                </button>
+            </div>
+
+            <div id="messageList" class="message-list"></div>
+
+            <p id="emptyMessage" class="empty-message">
+                표시할 대사가 없습니다.
+            </p>
+        </section>
+    </main>
+
+    <script src="./js/app.js"></script>
+    <script src="./js/save.js"></script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+:root {
+    color-scheme: light;
+    color: #222;
+    background: #f5f5f5;
+}
+
+body {
+    min-width: 280px;
+    margin: 0;
+    background: #f5f5f5;
+    color: #222;
+}
+
+* {
+box-sizing: border-box;
+}
+
+.message-list {
+width: 100%;
+max-width: 960px;
+margin: 0 auto;
+padding: 0 24px 48px;
+color: #eee !important;
+background: #121212 !important;
+}
+
+.log-title {
+margin: 24px 0;
+font-size: 24px;
+}
+
+.message {
+display: grid;
+grid-template-columns: 40px minmax(0, 1fr);
+column-gap: 12px;
+padding: 16px 0;
+border-bottom: 1px solid #262626;
+}
+
+.message.system {
+display: block;
+padding-left: 52px;
+color: #888;
+}
+
+.message[data-channel]:not([data-channel="main"]) {
+    background-color: #4c4c4c;
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.avatar,
+.avatar-spacer {
+width: 40px;
+height: 40px;
+}
+
+.avatar {
+display: block;
+background-repeat: no-repeat;
+background-size: 100% 100%;
+}
+
+.message-content {
+min-width: 0;
+}
+
+.message-header {
+display: flex;
+align-items: baseline;
+flex-wrap: wrap;
+gap: 8px;
+}
+
+.speaker {
+color: var(--speaker-color);
+font-size: 14px;
+font-weight: bold;
+}
+
+.timestamp,
+.edited,
+.channel-name {
+color: #888;
+font-size: 12px;
+}
+
+.message-text,
+.roll-result {
+font-size: 16px;
+line-height: 1.6;
+overflow-wrap: anywhere;
+white-space: pre-wrap;
+}
+
+.roll-result {
+display: block;
+color: #888;
+}
+
+.roll-result.success,
+.roll-result.critical {
+color: #2196f3;
+}
+
+.roll-result.failure,
+.roll-result.fumble {
+color: #dc004e;
+}
+
+.channel-label {
+    display: inline-block !important;
+    padding: 2px 7px !important;
+    margin-right: 6px;
+    background-color: #d2d2d2 !important;
+    color: #444 !important;
+    border-radius: 5px !important;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.5;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.export-area {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 24px 0;
+}
+
+#editorTopBar {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+#copyHtmlButton {
+    align-self: flex-start;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    background-color: #333;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+#copyHtmlButton:hover {
+    background-color: #555;
+}
+
+#saveHtmlButton {
+    align-self: flex-start;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    background-color: #333;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+#saveHtmlButton:hover {
+    background-color: #555;
+}
+
+#htmlOutput {
+    width: 100%;
+    min-height: 180px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background-color: #fff;
+    font-family: monospace;
+    font-size: 12px;
+    resize: vertical;
+}
+
+#copyStatus {
+    margin: 0;
+    color: #666;
+    font-size: 13px;
+}
+
+.dialogue-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+}
