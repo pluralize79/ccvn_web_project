@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko-KR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CCVN Editor</title>
+    <link rel="stylesheet" href="./css/json.css">
+</head>
+<body>
+    <div class="compare-export-container">
+
+        <section class="html">
+            <h3>HTML 선택</h3>
+
+            <label>
+                HTML 파일
+                <input type="file" id="compareHtmlFile" accept=".html">
+            </label>
+        </section>
+
+        <section class="json">
+            <h3>JSON 선택</h3>
+
+            <label>
+                JSON 파일
+                <input type="file" id="compareJsonFile" accept=".json">
+            </label>
+        </section>
+
+        <div class="export">
+            <button id="compareExportButton">
+                HTML에 존재하는 대사만 JSON으로 추출
+            </button>
+        </div>
+
+        <p id="compareExportStatus"></p>
+
+    </div>
+
+    <script src="./js/json.js"></script>
+</body>

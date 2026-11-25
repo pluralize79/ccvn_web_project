@@ -1,0 +1,49 @@
+.compare-export-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    text-align: center;
+    padding: 40px 20px;
+    box-sizing: border-box;
+}
+
+.compare-export-container section {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.compare-export-container label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.compare-export-container .export {
+    margin-top: 30px;
+}
+
+.compare-export-container button {
+    cursor: pointer;
+}
+
+#compareExportStatus {
+    text-align: center;
+    margin-top: 20px;
+}
+
+#compareExportButton {
+    align-self: flex-start;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    background-color: #333;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+}
