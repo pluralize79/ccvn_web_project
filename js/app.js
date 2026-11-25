@@ -1008,15 +1008,135 @@ ${allCss}
         }
     }
 
+    
+    // CSS 문자열을 CSSOM으로 변환
+    function parseCssRules(cssText) {
+        const style = document.createElement("style");
+        style.textContent = cssText;
+        document.head.appendChild(style);
+
+        const rules = [];
+
+        try {
+            for (const rule of Array.from(style.sheet?.cssRules || [])) {
+                if (rule.type === CSSRule.STYLE_RULE) {
+                    rules.push(rule);
+                }
+            }
+        } catch (error) {
+            console.warn("CSS 분석 오류:", error);
+        } finally {
+            style.remove();
+        }
+
+        return rules;
+    }
+
+    // 현재 편집기 CSS에서 첫 번째 HTML에 없는 속성만 추출
+    function collectMissingCss(baseCssTexts) {
+        const baseProperties = new Map();
+
+        // 첫 번째 HTML의 CSS 속성 수집
+        for (const cssText of baseCssTexts) {
+            for (const rule of parseCssRules(cssText)) {
+                const selector = rule.selectorText.trim();
+
+                if (!baseProperties.has(selector)) {
+                    baseProperties.set(selector, new Set());
+                }
+
+                for (const property of Array.from(rule.style)) {
+                    baseProperties.get(selector).add(property);
+                }
+            }
+        }
+
+        const missingRules = new Map();
+
+        // 편집기에서 사용 중인 CSS 수집
+        for (const sheet of Array.from(document.styleSheets)) {
+            if (sheet.ownerNode?.id === "importedAvatarStyles") {
+                continue;
+            }
+
+            let rules;
+
+            try {
+                rules = sheet.cssRules;
+            } catch (error) {
+                continue;
+            }
+
+            for (const rule of Array.from(rules || [])) {
+                if (rule.type !== CSSRule.STYLE_RULE) {
+                    continue;
+                }
+
+                const selectors = rule.selectorText
+                    .split(",")
+                    .map(selector => selector.trim());
+
+                for (const selector of selectors) {
+                    // 메시지 출력과 관련된 CSS만 허용
+                    const relevant =
+                        selector === "*" ||
+                        /(^|[\s>+~,(])(html|body|:root)(?=$|[\s>+~.#:[,)])/i.test(selector) ||
+                        /message-list|message-content|message-header|message-text|message\b|avatar|avatar-spacer|speaker|timestamp|edited|channel-name|channel-label|roll-result/.test(selector);
+
+                    if (!relevant) continue;
+
+                    const existing = baseProperties.get(selector) || new Set();
+
+                    const declarations = [];
+
+                    for (const property of Array.from(rule.style)) {
+                        // 첫 번째 HTML에 이미 존재하는 속성은 제외
+                        if (existing.has(property)) continue;
+
+                        const value = rule.style.getPropertyValue(property);
+                        const priority = rule.style.getPropertyPriority(property);
+
+                        declarations.push(
+                            `${property}: ${value}${priority ? " !important" : ""};`
+                        );
+                    }
+
+                    if (declarations.length === 0) continue;
+
+                    if (!missingRules.has(selector)) {
+                        missingRules.set(selector, new Map());
+                    }
+
+                    const properties = missingRules.get(selector);
+
+                    for (const property of Array.from(rule.style)) {
+                        if (existing.has(property)) continue;
+
+                        properties.set(
+                            property,
+                            `${property}: ${rule.style.getPropertyValue(property)}${rule.style.getPropertyPriority(property) ? " !important" : ""};`
+                        );
+                    }
+                }
+            }
+        }
+
+        return Array.from(missingRules.entries())
+            .map(([selector, properties]) =>
+                `${selector} {\n    ${Array.from(properties.values()).join("\n    ")}\n}`
+            )
+            .join("\n\n");
+    }
+
+    // 최종 CSS 생성
     function getExportCss(avatarExport) {
         const cssParts = [];
 
         const avatarRulePattern =
             /\.avatar-(?:file-\d+-)?image-[\w-]+\s*\{[^}]*\}/g;
 
-        // 첫 번째 HTML의 CSS만 기본 서식으로 사용
+        // 1. 첫 번째 HTML의 CSS를 기본으로 사용
         for (const cssText of (baseStyles || [])) {
-
             const withoutAvatar = cssText
                 .replace(avatarRulePattern, "")
                 .trim();
@@ -1030,10 +1150,19 @@ ${allCss}
             }
         }
 
-        // 여러 HTML에서 모은 아바타 CSS 통합
+        // 2. 첫 번째 HTML에 없는 편집기 CSS만 추가
+        const missingCss = collectMissingCss(
+            baseStyles || []
+        );
+
+        if (missingCss) {
+            cssParts.push(missingCss);
+        }
+
+        // 3. 여러 HTML에서 모은 아바타 CSS 통합
         cssParts.push(...avatarExport.canonicalRules);
 
-        // 원본에 레이아웃 규칙이 빠진 경우를 위한 최소 보완
+        // 4. 최소 레이아웃 보완
         cssParts.push(`
             * {
                 box-sizing: border-box;
@@ -1076,7 +1205,7 @@ ${allCss}
             }
         `);
 
-        // CSS 규칙 중복 제거
+        // 5. 중복 CSS 규칙 제거
         const uniqueRules = new Set();
         const result = [];
 
@@ -1094,10 +1223,7 @@ ${allCss}
                     rules.forEach(rule => {
                         const ruleText = rule.cssText.trim();
 
-                        if (
-                            ruleText &&
-                            !uniqueRules.has(ruleText)
-                        ) {
+                        if (ruleText && !uniqueRules.has(ruleText)) {
                             uniqueRules.add(ruleText);
                             result.push(ruleText);
                         }
@@ -1105,28 +1231,21 @@ ${allCss}
                 } else {
                     const fallback = cssText.trim();
 
-                    if (
-                        fallback &&
-                        !uniqueRules.has(fallback)
-                    ) {
+                    if (fallback && !uniqueRules.has(fallback)) {
                         uniqueRules.add(fallback);
                         result.push(fallback);
                     }
                 }
-
             } catch (error) {
                 console.warn("CSS 중복 제거 중 오류:", error);
                 result.push(cssText);
-
             } finally {
                 tempStyle.remove();
             }
         });
 
-        // 최종 CSS의 모든 선택자를 채팅 로그 영역으로 제한
-        return scopeExportCss(
-            result.join("\n\n")
-        );
+        // 6. 내보내기 영역에 CSS 적용 범위 제한
+        return scopeExportCss(result.join("\n\n"));
     }
 
     copyButton.addEventListener("click", async () => {
