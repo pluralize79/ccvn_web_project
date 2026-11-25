@@ -26,6 +26,7 @@
     let dialogues = [];
     let importedFiles = [];
     let sourceStyles = [];
+    let baseStyles = null;
     let avatarStyles = [];
     let nextDialogueId = 0;
     let nextFileStyleId = 0;
@@ -125,13 +126,8 @@
     }
     function getChannelFromFilename(filename) {
         const normalizedFilename = normalizeChannelName(filename);
-        const nameWithoutExtension = normalizedFilename.replace(
-            /\.[^.]+$/,
-            ""
-        );
-        const match = nameWithoutExtension.match(
-            /(?:\[([^\[\]]+)\]|［([^［］]+)］)\s*$/
-        );
+        const nameWithoutExtension = normalizedFilename.replace(/\.[^.]+$/, "");
+        const match = nameWithoutExtension.match(/(?:\[([^\[\]]+)\]|［([^［］]+)］)\s*$/);
         if (!match) {
             return "main";
         }
@@ -150,10 +146,7 @@
             .filter(Boolean);
     }
     function namespaceAvatarCss(cssText, filePrefix) {
-        return cssText.replace(
-            /\.avatar-(?:file-\d+-)?image-([\w-]+)/g,
-            `.${filePrefix}-image-$1`
-        );
+        return cssText.replace(/\.avatar-(?:file-\d+-)?image-([\w-]+)/g, `.${filePrefix}-image-$1`);
     }
     function namespaceAvatarClass(className, filePrefix) {
         return className.replace(
@@ -164,9 +157,7 @@
     function collectAvatarCss(cssTexts) {
         const collected = [];
         for (const cssText of cssTexts) {
-            const rules = cssText.matchAll(
-                /\.avatar-file-\d+-image-[\w-]+\s*\{[^}]*\}/g
-            );
+            const rules = cssText.matchAll(/\.avatar-file-\d+-image-[\w-]+\s*\{[^}]*\}/g);
             for (const rule of rules) {
                 collected.push(rule[0]);
             }
@@ -227,6 +218,13 @@
             namespaceAvatarCss(cssText, filePrefix)
         );
         sourceStyles.push(...transformedCss);
+
+        // 첫 번째 HTML의 CSS만 기본 서식으로 사용한다.
+        // 이후 HTML에서는 아바타 CSS만 별도로 수집한다.
+        if (baseStyles === null) {
+            baseStyles = transformedCss.slice();
+        }
+
         avatarStyles.push(...collectAvatarCss(transformedCss));
         refreshAvatarStyles();
         const titleElement = doc.querySelector(
@@ -339,9 +337,7 @@
         if (selectedFiles.length === 0) {
             return;
         }
-        const htmlFiles = selectedFiles.filter(file =>
-            /\.(html?|HTML?)$/.test(file.name)
-        );
+        const htmlFiles = selectedFiles.filter(file => /\.html?$/i.test(file.name));
         if (htmlFiles.length === 0) {
             statusMessage.textContent =
                 "HTML 파일(.html, .htm)을 선택해 주세요.";
@@ -578,7 +574,7 @@
                 const body = match[2];
                 const imageMatch = body.match(/background-image\s*:\s*url\((.*?)\)\s*;/is);
                 const imageValue = imageMatch
-                    ? imageMatch[1].trim().replace(/^(["'])(.*)\1$/, "$2")
+                    ? imageMatch[1].trim().replace(/^(["'])(.\*)\1$/, "$2")
                     : body.trim();
                 let canonicalClass = imageToCanonicalClass.get(imageValue);
                 if (!canonicalClass) {
@@ -659,140 +655,480 @@ ${allCss}
     </style>
 </head>
 <body>
-<main class="message-list">
-    ${messageHtml}
-</main>
+<div class="message-log-container">
+    <main class="message-list">
+        ${messageHtml}
+    </main>
+</div>
 </body>
 </html>`;
     }
+    // CSS 안에서 :root 규칙은 첫 번째 규칙만 유지하고 이후 것은 제거한다.
+    // @media / @supports 안에 들어 있는 :root도 동일하게 처리한다.
+    function keepFirstRootRule(cssText, rootState) {
+        const tempStyle = document.createElement("style");
+        tempStyle.textContent = cssText;
+        document.head.appendChild(tempStyle);
+
+        try {
+            const processRules = rules => {
+                const output = [];
+
+                for (const rule of Array.from(rules || [])) {
+                    // 일반 스타일 규칙
+                    if (rule.type === CSSRule.STYLE_RULE) {
+                        if (/(^|,)\s*:root(?:\b|\s|\.)/i.test(rule.selectorText)) {
+                            if (rootState.kept) continue;
+                            rootState.kept = true;
+                        }
+                        output.push(rule.cssText);
+                        continue;
+                    }
+
+                    // @media, @supports, @layer 등 하위 규칙을 가진 그룹 규칙
+                    if (rule.cssRules) {
+                        const original = rule.cssText;
+                        const braceIndex = original.indexOf("{");
+                        if (braceIndex >= 0) {
+                            const inner = processRules(rule.cssRules);
+                            if (inner) {
+                                output.push(
+                                    original.slice(0, braceIndex + 1) +
+                                    "\n" + inner + "\n}"
+                                );
+                            }
+                        } else {
+                            output.push(original);
+                        }
+                        continue;
+                    }
+
+                    output.push(rule.cssText);
+                }
+
+                return output.join("\n");
+            };
+
+            return processRules(tempStyle.sheet?.cssRules || []);
+        } catch (error) {
+            console.warn(" :root CSS 정리 중 오류:", error);
+            return cssText;
+        } finally {
+            tempStyle.remove();
+        }
+    }
+
+        // 색상 문자열의 상대적인 밝기를 계산한다.
+    function getColorBrightness(value) {
+        const text = String(value || "").trim().toLowerCase();
+        let rgb = null;
+
+        const hex = text.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+
+        if (hex) {
+            let value = hex[1];
+
+            if (value.length === 3) {
+                value = value.split("")
+                    .map(char => char + char)
+                    .join("");
+            }
+
+            rgb = [0, 2, 4].map(index =>
+                parseInt(value.slice(index, index + 2), 16)
+            );
+        } else {
+            const match = text.match(
+                /rgba?\(\s*([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)/i
+            );
+
+            if (match) {
+                rgb = match.slice(1, 4).map(Number);
+            }
+        }
+
+        if (!rgb) return null;
+
+        const channels = rgb.map(channel => {
+            const normalized = channel / 255;
+
+            return normalized <= 0.04045
+                ? normalized / 12.92
+                : Math.pow((normalized + 0.055) / 1.055, 2.4);
+        });
+
+        return (
+            channels[0] * 0.2126 +
+            channels[1] * 0.7152 +
+            channels[2] * 0.0722
+        );
+    }
+
+
+    // 다크 모드 CSS만 제거한다.
+    // 일반 테마의 배경색, 글자색, 장식 서식은 보존한다.
+    function removeDarkModeCss(cssText) {
+        const tempStyle = document.createElement("style");
+        tempStyle.textContent = cssText;
+        document.head.appendChild(tempStyle);
+
+        try {
+            function processRules(rules) {
+                const output = [];
+
+                for (const rule of Array.from(rules || [])) {
+
+                    // 시스템 다크 모드 규칙은 내부 서식을 유지하면서
+                    // 항상 적용되는 규칙으로 변환
+                    if (
+                        rule.type === CSSRule.MEDIA_RULE &&
+                        /prefers-color-scheme\s*:\s*dark/i.test(
+                            rule.conditionText || ""
+                        )
+                    ) {
+                        output.push(
+                            ...processRules(rule.cssRules)
+                        );
+                        continue;
+                    }
+
+                    // 시스템 라이트 모드 전용 규칙은 제외
+                    if (
+                        rule.type === CSSRule.MEDIA_RULE &&
+                        /prefers-color-scheme\s*:\s*light/i.test(
+                            rule.conditionText || ""
+                        )
+                    ) {
+                        continue;
+                    }
+
+                    // 일반 CSS 규칙
+                    if (rule.type === CSSRule.STYLE_RULE) {
+                        const style = rule.style;
+
+                        const scheme = style
+                            .getPropertyValue("color-scheme")
+                            .trim()
+                            .toLowerCase();
+
+                        if (/\bdark\b/i.test(scheme)) {
+                            style.setProperty(
+                                "color-scheme",
+                                "light"
+                            );
+                        }
+
+                        output.push(
+                            `${rule.selectorText} { ${style.cssText} }`
+                        );
+
+                        continue;
+                    }
+
+                    // 다른 그룹 규칙 내부도 처리
+                    if (rule.cssRules) {
+                        const nested = processRules(rule.cssRules);
+
+                        if (nested.length) {
+                            const braceIndex = rule.cssText.indexOf("{");
+
+                            output.push(
+                                rule.cssText.slice(0, braceIndex + 1) +
+                                "\n" +
+                                nested.join("\n") +
+                                "\n}"
+                            );
+                        }
+
+                        continue;
+                    }
+
+                    output.push(rule.cssText);
+                }
+
+                return output;
+            }
+
+            const result = processRules(
+                tempStyle.sheet?.cssRules || []
+            );
+
+            result.push(`
+                :root {
+                    color-scheme: light;
+                }
+            `);
+
+            return result.join("\n");
+
+        } catch (error) {
+            console.warn("CSS 색상 모드 정리 중 오류:", error);
+            return cssText;
+
+        } finally {
+            tempStyle.remove();
+        }
+    }
+
+    function scopeExportCss(cssText) {
+        const tempStyle = document.createElement("style");
+        tempStyle.textContent = cssText;
+        document.head.appendChild(tempStyle);
+
+        const wrapper = ".message-log-container";
+
+        // 선택자 목록을 괄호 안의 쉼표와 구분해서 분리
+        function splitSelectors(selectorText) {
+            const result = [];
+            let current = "";
+            let depth = 0;
+            let quote = "";
+            let escaped = false;
+
+            for (const char of selectorText) {
+                if (escaped) {
+                    current += char;
+                    escaped = false;
+                    continue;
+                }
+
+                if (char === "\\") {
+                    current += char;
+                    escaped = true;
+                    continue;
+                }
+
+                if (quote) {
+                    current += char;
+                    if (char === quote) quote = "";
+                    continue;
+                }
+
+                if (char === '"' || char === "'") {
+                    quote = char;
+                    current += char;
+                    continue;
+                }
+
+                if (char === "(" || char === "[") depth++;
+                if (char === ")" || char === "]") depth--;
+
+                if (char === "," && depth === 0) {
+                    result.push(current.trim());
+                    current = "";
+                } else {
+                    current += char;
+                }
+            }
+
+            if (current.trim()) {
+                result.push(current.trim());
+            }
+
+            return result;
+        }
+
+        function scopeSelector(selector) {
+            let scoped = selector.replace(
+                /(^|[\s>+~,(])(?:html|body|:root)(?=$|[\s>+~.#:[,)])/gi,
+                "$1" + wrapper
+            );
+
+            // html, body, :root가 아닌 일반 선택자는
+            // 채팅 로그 컨테이너 아래에 적용
+            if (!scoped.startsWith(wrapper)) {
+                scoped = `${wrapper} ${scoped}`;
+            }
+
+            // 중복된 컨테이너 선택자 정리
+            scoped = scoped.replace(
+                /(\.message-log-container)\s+\.message-log-container/g,
+                "$1"
+            );
+
+            return scoped;
+        }
+
+        function processRules(rules) {
+            const output = [];
+
+            for (const rule of Array.from(rules || [])) {
+
+                // 일반 CSS 선택자
+                if (
+                    rule.type === CSSRule.STYLE_RULE &&
+                    rule.selectorText
+                ) {
+                    const selectors = splitSelectors(rule.selectorText)
+                        .map(scopeSelector);
+
+                    output.push(
+                        `${selectors.join(", ")} { ${rule.style.cssText} }`
+                    );
+
+                    continue;
+                }
+
+                // @media, @supports, @keyframes 등의 그룹 규칙
+                if (rule.cssRules) {
+                    const nested = processRules(rule.cssRules);
+
+                    if (nested.length) {
+                        const braceIndex = rule.cssText.indexOf("{");
+
+                        output.push(
+                            rule.cssText.slice(0, braceIndex + 1) +
+                            "\n" +
+                            nested.join("\n") +
+                            "\n}"
+                        );
+                    }
+
+                    continue;
+                }
+
+                // @font-face 등 선택자가 없는 규칙
+                output.push(rule.cssText);
+            }
+
+            return output;
+        }
+
+        try {
+            return processRules(
+                tempStyle.sheet?.cssRules || []
+            ).join("\n");
+
+        } catch (error) {
+            console.warn("CSS 범위 제한 중 오류:", error);
+            return cssText;
+
+        } finally {
+            tempStyle.remove();
+        }
+    }
+
     function getExportCss(avatarExport) {
         const cssParts = [];
-        Array.from(document.styleSheets).forEach(sheet => {
-            try {
-                if (
-                    sheet.ownerNode &&
-                    sheet.ownerNode.id === "importedAvatarStyles"
-                ) {
-                    return;
-                }
-                const rules = Array.from(sheet.cssRules || []);
-                if (rules.length > 0) {
-                    cssParts.push(
-                        rules.map(rule => rule.cssText).join("\n")
-                    );
-                }
-            } catch (error) {
-                console.warn(
-                    "일부 CSS를 읽지 못했습니다:",
-                    sheet.href || error
-                );
+
+        const avatarRulePattern =
+            /\.avatar-(?:file-\d+-)?image-[\w-]+\s*\{[^}]*\}/g;
+
+        // 첫 번째 HTML의 CSS만 기본 서식으로 사용
+        for (const cssText of (baseStyles || [])) {
+
+            const withoutAvatar = cssText
+                .replace(avatarRulePattern, "")
+                .trim();
+
+            if (!withoutAvatar) continue;
+
+            const cleanedCss = removeDarkModeCss(withoutAvatar);
+
+            if (cleanedCss.trim()) {
+                cssParts.push(cleanedCss);
             }
-        });
-        const avatarRulePattern = /\.avatar-(?:file-\d+-)?image-[\w-]+\s*\{[^}]*\}/g;
-        for (const cssText of sourceStyles) {
-            const cleanedCss = cssText.replace(avatarRulePattern, "").trim();
-            if (cleanedCss) cssParts.push(cleanedCss);
         }
+
+        // 여러 HTML에서 모은 아바타 CSS 통합
         cssParts.push(...avatarExport.canonicalRules);
+
+        // 원본에 레이아웃 규칙이 빠진 경우를 위한 최소 보완
         cssParts.push(`
-            body {
-                margin: 0;
-                background: #f5f5f5;
-                color: #222;
-            }
             * {
                 box-sizing: border-box;
             }
+
             .message-list {
                 width: 100%;
                 max-width: 960px;
                 margin: 0 auto;
                 padding: 0 24px 48px;
-                color: #eee;
-                background: #121212;
             }
-            .log-title {
-                margin: 24px 0;
-                font-size: 24px;
-            }
-            .message {
-                display: grid;
-                grid-template-columns: 40px minmax(0, 1fr);
-                column-gap: 12px;
-                padding: 16px 0;
-                border-bottom: 1px solid #262626;
-            }
-            .message.system {
-                display: block;
-                padding-left: 52px;
-                color: #888;
-            }
+
             .avatar,
             .avatar-spacer {
                 width: 40px;
                 height: 40px;
             }
+
             .avatar {
                 display: block;
                 background-repeat: no-repeat;
                 background-size: 100% 100%;
             }
+
             .message-content {
                 min-width: 0;
             }
+
             .message-header {
                 display: flex;
                 align-items: baseline;
                 flex-wrap: wrap;
                 gap: 8px;
             }
-            .speaker {
-                color: var(--speaker-color);
-                font-size: 14px;
-                font-weight: bold;
-            }
-            .timestamp {
-                color: #888;
-                font-size: 12px;
-            }
+
             .message-text,
             .roll-result {
-                font-size: 16px;
-                line-height: 1.6;
                 overflow-wrap: anywhere;
                 white-space: pre-wrap;
             }
-            .roll-result {
-                display: block;
-                color: #888;
-            }
-            .roll-result.success,
-            .roll-result.critical {
-                color: #2196f3;
-            }
-            .roll-result.failure,
-            .roll-result.fumble {
-                color: #dc004e;
-            }
-            .channel-label {
-                display: inline-block;
-                padding: 2px 7px;
-                margin-right: 6px;
-                background-color: #d2d2d2;
-                color: #444;
-                border-radius: 5px;
-                font-size: 12px;
-                font-weight: 500;
-                line-height: 1.5;
-                vertical-align: middle;
-                white-space: nowrap;
-                pointer-events: none;
-                cursor: default;
-                user-select: none;
-            }
         `);
-        return [...new Set(cssParts.filter(Boolean))].join("\n\n");
+
+        // CSS 규칙 중복 제거
+        const uniqueRules = new Set();
+        const result = [];
+
+        cssParts.filter(Boolean).forEach(cssText => {
+            const tempStyle = document.createElement("style");
+            tempStyle.textContent = cssText;
+            document.head.appendChild(tempStyle);
+
+            try {
+                const rules = Array.from(
+                    tempStyle.sheet?.cssRules || []
+                );
+
+                if (rules.length) {
+                    rules.forEach(rule => {
+                        const ruleText = rule.cssText.trim();
+
+                        if (
+                            ruleText &&
+                            !uniqueRules.has(ruleText)
+                        ) {
+                            uniqueRules.add(ruleText);
+                            result.push(ruleText);
+                        }
+                    });
+                } else {
+                    const fallback = cssText.trim();
+
+                    if (
+                        fallback &&
+                        !uniqueRules.has(fallback)
+                    ) {
+                        uniqueRules.add(fallback);
+                        result.push(fallback);
+                    }
+                }
+
+            } catch (error) {
+                console.warn("CSS 중복 제거 중 오류:", error);
+                result.push(cssText);
+
+            } finally {
+                tempStyle.remove();
+            }
+        });
+
+        // 최종 CSS의 모든 선택자를 채팅 로그 영역으로 제한
+        return scopeExportCss(
+            result.join("\n\n")
+        );
     }
+
     copyButton.addEventListener("click", async () => {
         if (dialogues.length === 0) {
             statusMessage.textContent =
